@@ -209,7 +209,7 @@ void scale_test(string mode = "test", bool viewICP = false){
     }
 }
 
-void angle_test(string mode = "test", bool viewICP = false){
+void angle_test(string mode = "test", bool viewICP = true){
     line2Dup::Detector detector(256, {2, 4, 8});
     // min(width, height) / 32 is the max feature number
 
@@ -236,6 +236,8 @@ void angle_test(string mode = "test", bool viewICP = false){
         shape_based_matching::shapeInfo_producer shapes(padded_img, padded_mask);
         shapes.angle_range = {-45, 45};
         shapes.angle_step = 1;
+        shapes.scale_range = {1.0, 1.4};
+        shapes.scale_step = 0.1;
         shapes.produce_infos();
         std::vector<shape_based_matching::shapeInfo_producer::Info> infos_have_templ;
         string class_id = "test";
@@ -244,9 +246,10 @@ void angle_test(string mode = "test", bool viewICP = false){
             waitKey(1);
 
 
-            // std::cout << "\ninfo.angle: " << info.angle << std::endl;
+            std::cout << "\ninfo.angle: " << info.angle << std::endl;
+            std::cout << "\ninfo.scale: " << info.scale << std::endl;
             int templ_id = detector.addTemplate(shapes.src_of(info), class_id, shapes.mask_of(info));
-            // std::cout << "templ_id: " << templ_id << std::endl;
+            std::cout << "templ_id: " << templ_id << std::endl;
 
             if(templ_id != -1){
                 infos_have_templ.push_back(info);
@@ -268,6 +271,7 @@ void angle_test(string mode = "test", bool viewICP = false){
 
         // only support gray img now
         Mat test_img = imread(prefix+"case1/test.png");
+        cv::resize(test_img, test_img, cv::Size(test_img.cols*1.3, test_img.rows*1.3));
         assert(!test_img.empty() && "check your img path");
 
         int padding = 0;
@@ -329,7 +333,8 @@ void angle_test(string mode = "test", bool viewICP = false){
             // 100 is padding when training
             // tl_x/y: template croping topleft corner when training
 
-            float r_scaled = 304/2.0f*infos[match.template_id].scale;
+            float r_scaled_w = 304/2.0f*infos[match.template_id].scale;
+            float r_scaled_h = 289/2.0f*infos[match.template_id].scale;
 
             // scaling won't affect this, because it has been determined by warpAffine
             // cv::warpAffine(src, dst, rot_mat, src.size()); last param
@@ -358,13 +363,19 @@ void angle_test(string mode = "test", bool viewICP = false){
             randColor[2] = 255;
             for(int i=0; i<templ[0].features.size(); i++){
                 auto feat = templ[0].features[i];
-                cv::circle(edge, {feat.x+match.x, feat.y+match.y}, 2, randColor, -1);
+                cv::circle(img, {feat.x+match.x, feat.y+match.y}, 2, randColor, -1);
             }
 
-            if(viewICP){
-                imshow("icp", edge);
-                waitKey(0);
-            }
+            // if(viewICP){
+            //     imshow("icp", edge);
+            //     waitKey(0);
+            // }
+
+            float x1 =  match.x - templ[0].tl_x + train_img_half_width;
+            float y1 =  match.y - templ[0].tl_y + train_img_half_hight;
+            float new_x1 = result.transformation_[0][0]*x + result.transformation_[0][1]*y + result.transformation_[0][2];
+            float new_y1 = result.transformation_[1][0]*x + result.transformation_[1][1]*y + result.transformation_[1][2];
+            std::cout << "new_x1: " << new_x1 << " new_y1: " << new_y1 << std::endl;
 
             randColor[0] = 0;
             randColor[1] = 255;
@@ -376,10 +387,11 @@ void angle_test(string mode = "test", bool viewICP = false){
                 float new_x = result.transformation_[0][0]*x + result.transformation_[0][1]*y + result.transformation_[0][2];
                 float new_y = result.transformation_[1][0]*x + result.transformation_[1][1]*y + result.transformation_[1][2];
 
-                cv::circle(edge, {int(new_x+0.5f), int(new_y+0.5f)}, 2, randColor, -1);
+
+                cv::circle(img, {int(new_x), int(new_y)}, 2, randColor, -1);
             }
             if(viewICP){
-                imshow("icp", edge);
+                imshow("icp", img);
                 waitKey(0);
             }
 
@@ -400,9 +412,9 @@ void angle_test(string mode = "test", bool viewICP = false){
             std::cout << "match.similarity: " << match.similarity << std::endl;
 
             cv::putText(edge, to_string(int(round(match.similarity))),
-            Point(match.x+r_scaled-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
+            Point(match.x+r_scaled_w-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
 
-            cv::RotatedRect rotatedRectangle({x, y}, {2*r_scaled, 2*r_scaled}, improved_angle);//-infos[match.template_id].angle);
+            cv::RotatedRect rotatedRectangle({x, y}, {2*r_scaled_w, 2*r_scaled_h}, improved_angle);//-infos[match.template_id].angle);
 
             cv::Point2f vertices[4];
             rotatedRectangle.points(vertices);
@@ -410,10 +422,11 @@ void angle_test(string mode = "test", bool viewICP = false){
                 int next = (i+1==4) ? 0 : (i+1);
                 cv::line(edge, vertices[i], vertices[next], randColor, 2);
             }
+            
+            imshow("img", edge);
+            waitKey(5000);
         }
 
-        imshow("img", img);
-        waitKey(0);
 
         std::cout << "test end" << std::endl << std::endl;
     }
