@@ -113,26 +113,7 @@ void circle_gen(){
     waitKey(0);
 }
 
-class Timer
-{
-public:
-    Timer() : beg_(clock_::now()) {}
-    void reset() { beg_ = clock_::now(); }
-    double elapsed() const {
-        return std::chrono::duration_cast<second_>
-            (clock_::now() - beg_).count(); }
-    void out(std::string message = ""){
-        double t = elapsed();
-        std::cout << message << "\nelasped time:" << t << "s" << std::endl;
-        reset();
-    }
-private:
-    typedef std::chrono::high_resolution_clock clock_;
-    typedef std::chrono::duration<double, std::ratio<1> > second_;
-    std::chrono::time_point<clock_> beg_;
-};
-
-void scale_test(string mode = "test"){
+void scale_test(string mode = "test", bool viewICP = false){
     int num_feature = 150;
 
     // feature numbers(how many ori in one templates?)
@@ -228,7 +209,7 @@ void scale_test(string mode = "test"){
     }
 }
 
-void angle_test(string mode = "test"){
+void angle_test(string mode = "test", bool viewICP = false){
     line2Dup::Detector detector(256, {2, 4, 8});
     // min(width, height) / 32 is the max feature number
 
@@ -276,7 +257,8 @@ void angle_test(string mode = "test"){
         float center_col = padded_img.cols/2.0f;
         shapes.save_infos(infos_have_templ, prefix + "case1/test_info.yaml");
         std::cout << "train end" << std::endl << std::endl;
-    }else if(mode=="test"){
+
+    } else if(mode=="test"){
         std::vector<std::string> ids;
         ids.push_back("test");
         detector.readClasses(ids, prefix+"case1/%s_templ.yaml");
@@ -307,7 +289,6 @@ void angle_test(string mode = "test"){
         cv::Canny(detector.dx_, detector.dy_, canny_edge, 30, 60);
         cv::imshow("canny edge", canny_edge);
         // cv::waitKey();
-
 
         std::cout << "matches.size(): " << matches.size() << std::endl;
         size_t top5 = 5;
@@ -386,10 +367,49 @@ void angle_test(string mode = "test"){
             }
 
             randColor[0] = 0;
+            randColor[1] = 255;
+            randColor[2] = 0;
+            for(int i=0; i<templ[0].features.size(); i++){
+                auto feat = templ[0].features[i];
+                float x = feat.x + match.x;
+                float y = feat.y + match.y;
+                float new_x = result.transformation_[0][0]*x + result.transformation_[0][1]*y + result.transformation_[0][2];
+                float new_y = result.transformation_[1][0]*x + result.transformation_[1][1]*y + result.transformation_[1][2];
 
-<<<<<<< HEAD
-            std::cout << "\nmatch.template_id: " << match.template_id << std::endl;
+                cv::circle(edge, {int(new_x+0.5f), int(new_y+0.5f)}, 2, randColor, -1);
+            }
+            if(viewICP){
+                imshow("icp", edge);
+                waitKey(0);
+            }
+
+            double init_angle = infos[match.template_id].angle;
+            init_angle = init_angle >= 180 ? (init_angle-360) : init_angle;
+
+            double ori_diff_angle = std::abs(init_angle);
+            double icp_diff_angle = std::abs(-std::atan(result.transformation_[1][0]/result.transformation_[0][0])/CV_PI*180 +
+                    init_angle);
+            double improved_angle = ori_diff_angle - icp_diff_angle;
+
+            std::cout << "\n---------------" << std::endl;
+            std::cout << "scale: " << std::sqrt(result.transformation_[0][0]*result.transformation_[0][0] +
+                    result.transformation_[1][0]*result.transformation_[1][0]) << std::endl;
+            std::cout << "init diff angle: " << ori_diff_angle << std::endl;
+            std::cout << "improved angle: " << improved_angle << std::endl;
+            std::cout << "match.template_id: " << match.template_id << std::endl;
             std::cout << "match.similarity: " << match.similarity << std::endl;
+
+            cv::putText(edge, to_string(int(round(match.similarity))),
+            Point(match.x+r_scaled-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
+
+            cv::RotatedRect rotatedRectangle({x, y}, {2*r_scaled, 2*r_scaled}, improved_angle);//-infos[match.template_id].angle);
+
+            cv::Point2f vertices[4];
+            rotatedRectangle.points(vertices);
+            for(int i=0; i<4; i++){
+                int next = (i+1==4) ? 0 : (i+1);
+                cv::line(edge, vertices[i], vertices[next], randColor, 2);
+            }
         }
 
         imshow("img", img);
@@ -476,41 +496,17 @@ void noise_test(string mode = "test"){
             randColor[0] = rand()%155 + 100;
             randColor[1] = rand()%155 + 100;
             randColor[2] = rand()%155 + 100;
-=======
->>>>>>> origin/sim3
 
-            randColor[0] = 0;
-            randColor[1] = 255;
-            randColor[2] = 0;
             for(int i=0; i<templ[0].features.size(); i++){
                 auto feat = templ[0].features[i];
-                float x = feat.x + match.x;
-                float y = feat.y + match.y;
-                float new_x = result.transformation_[0][0]*x + result.transformation_[0][1]*y + result.transformation_[0][2];
-                float new_y = result.transformation_[1][0]*x + result.transformation_[1][1]*y + result.transformation_[1][2];
-
-                cv::circle(edge, {int(new_x+0.5f), int(new_y+0.5f)}, 2, randColor, -1);
-            }
-            if(viewICP){
-                imshow("icp", edge);
-                waitKey(0);
+                cv::circle(test_img, {feat.x+match.x, feat.y+match.y}, 2, randColor, -1);
             }
 
-            
-            double init_angle = infos[match.template_id].angle;
-            init_angle = init_angle >= 180 ? (init_angle-360) : init_angle;
+            cv::putText(test_img, to_string(int(round(match.similarity))),
+                        Point(match.x+r-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
+            cv::rectangle(test_img, {match.x, match.y}, {x, y}, randColor, 2);
 
-            double ori_diff_angle = std::abs(init_angle);
-            double icp_diff_angle = std::abs(-std::atan(result.transformation_[1][0]/result.transformation_[0][0])/CV_PI*180 +
-                    init_angle);
-            double improved_angle = ori_diff_angle - icp_diff_angle;
-
-            std::cout << "\n---------------" << std::endl;
-            std::cout << "scale: " << std::sqrt(result.transformation_[0][0]*result.transformation_[0][0] +
-                    result.transformation_[1][0]*result.transformation_[1][0]) << std::endl;
-            std::cout << "init diff angle: " << ori_diff_angle << std::endl;
-            std::cout << "improved angle: " << improved_angle << std::endl;
-            std::cout << "match.template_id: " << match.template_id << std::endl;
+            std::cout << "\nmatch.template_id: " << match.template_id << std::endl;
             std::cout << "match.similarity: " << match.similarity << std::endl;
         }
 
@@ -580,7 +576,6 @@ void view_angle(){
 int main(){
 
     MIPP_test();
-<<<<<<< HEAD
 
     // scale_test("train"); // test or train
     // scale_test("test"); // test or train
@@ -589,8 +584,7 @@ int main(){
     // noise_test("test"); // test or train
 
     angle_test("train"); // test or train
-=======
->>>>>>> origin/sim3
+
     angle_test("test"); // test or train
     return 0;
 }
