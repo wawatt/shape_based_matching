@@ -3,6 +3,9 @@
 #include <iostream>
 #include <assert.h>
 #include <chrono>
+
+#include "cuda_icp/icp.h"
+
 using namespace std;
 using namespace cv;
 
@@ -102,12 +105,32 @@ void NMSBoxes(const std::vector<Rect>& bboxes, const std::vector<float>& scores,
 
 }
 
+
 void circle_gen(){
     Mat bg = Mat(800, 800, CV_8UC3, {0, 0, 0});
     cv::circle(bg, {400, 400}, 200, {255,255,255}, -1);
     cv::imshow("test", bg);
     waitKey(0);
 }
+
+class Timer
+{
+public:
+    Timer() : beg_(clock_::now()) {}
+    void reset() { beg_ = clock_::now(); }
+    double elapsed() const {
+        return std::chrono::duration_cast<second_>
+            (clock_::now() - beg_).count(); }
+    void out(std::string message = ""){
+        double t = elapsed();
+        std::cout << message << "\nelasped time:" << t << "s" << std::endl;
+        reset();
+    }
+private:
+    typedef std::chrono::high_resolution_clock clock_;
+    typedef std::chrono::duration<double, std::ratio<1> > second_;
+    std::chrono::time_point<clock_> beg_;
+};
 
 void scale_test(string mode = "test"){
     int num_feature = 150;
@@ -212,6 +235,7 @@ void angle_test(string mode = "test"){
 //    mode = "test";
     if(mode == "train"){
         Mat img = imread(prefix+"case1/train_small.png");
+
         assert(!img.empty() && "check your img path");
 
         Rect roi(0, 0, img.cols, img.rows);
@@ -238,9 +262,11 @@ void angle_test(string mode = "test"){
             imshow("train", shapes.src_of(info));
             waitKey(1);
 
+
             // std::cout << "\ninfo.angle: " << info.angle << std::endl;
             int templ_id = detector.addTemplate(shapes.src_of(info), class_id, shapes.mask_of(info));
             // std::cout << "templ_id: " << templ_id << std::endl;
+
             if(templ_id != -1){
                 infos_have_templ.push_back(info);
             }
@@ -282,12 +308,38 @@ void angle_test(string mode = "test"){
         cv::imshow("canny edge", canny_edge);
         // cv::waitKey();
 
-        if(img.channels() == 1) cvtColor(img, img, CV_GRAY2BGR);
 
         std::cout << "matches.size(): " << matches.size() << std::endl;
-        size_t top5 = 1;
+        size_t top5 = 5;
         if(top5>matches.size()) top5=matches.size();
-        for(size_t i=0; i<top5; i++){
+
+        // construct scene
+        Scene_edge scene;
+        // buffer
+        vector<::Vec2f> pcd_buffer, normal_buffer;
+        scene.init_Scene_edge_cpu(img, pcd_buffer, normal_buffer);
+
+        if(img.channels() == 1) cvtColor(img, img, CV_GRAY2BGR);
+
+        cv::Mat edge_global;  // get edge
+        {
+            cv::Mat gray;
+            if(img.channels() > 1){
+                cv::cvtColor(img, gray, CV_BGR2GRAY);
+            }else{
+                gray = img;
+            }
+
+            cv::Mat smoothed = gray;
+            cv::Canny(smoothed, edge_global, 30, 60);
+
+            if(edge_global.channels() == 1) cvtColor(edge_global, edge_global, CV_GRAY2BGR);
+        }
+
+        for(int i=top5-1; i>=0; i--)
+        {
+            Mat edge = edge_global.clone();
+
             auto match = matches[i];
             auto templ = detector.getTemplates("test",
                                                match.template_id);
@@ -307,27 +359,35 @@ void angle_test(string mode = "test"){
             float x =  match.x - templ[0].tl_x + train_img_half_width;
             float y =  match.y - templ[0].tl_y + train_img_half_hight;
             std::cout << "x: " << x-padding << " y: " << y-padding << std::endl;
+
+
+            vector<::Vec2f> model_pcd(templ[0].features.size());
+            for(int i=0; i<templ[0].features.size(); i++){
+                auto& feat = templ[0].features[i];
+                model_pcd[i] = {
+                    float(feat.x + match.x),
+                    float(feat.y + match.y)
+                };
+            }
+            cuda_icp::RegistrationResult result = cuda_icp::ICP2D_Point2Plane_cpu(model_pcd, scene);
+
             cv::Vec3b randColor;
-            randColor[0] = rand()%155 + 100;
-            randColor[1] = rand()%155 + 100;
-            randColor[2] = rand()%155 + 100;
+            randColor[0] = 0;
+            randColor[1] = 0;
+            randColor[2] = 255;
             for(int i=0; i<templ[0].features.size(); i++){
                 auto feat = templ[0].features[i];
-                cv::circle(img, {feat.x+match.x, feat.y+match.y}, 3, randColor, -1);
+                cv::circle(edge, {feat.x+match.x, feat.y+match.y}, 2, randColor, -1);
             }
 
-            cv::putText(img, to_string(int(round(match.similarity))),
-                        Point(match.x+r_scaled-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
-
-            cv::RotatedRect rotatedRectangle({x, y}, {2*r_scaled, 2*r_scaled}, -infos[match.template_id].angle);
-
-            cv::Point2f vertices[4];
-            rotatedRectangle.points(vertices);
-            for(int i=0; i<4; i++){
-                int next = (i+1==4) ? 0 : (i+1);
-                cv::line(img, vertices[i], vertices[next], randColor, 2);
+            if(viewICP){
+                imshow("icp", edge);
+                waitKey(0);
             }
 
+            randColor[0] = 0;
+
+<<<<<<< HEAD
             std::cout << "\nmatch.template_id: " << match.template_id << std::endl;
             std::cout << "match.similarity: " << match.similarity << std::endl;
         }
@@ -416,22 +476,43 @@ void noise_test(string mode = "test"){
             randColor[0] = rand()%155 + 100;
             randColor[1] = rand()%155 + 100;
             randColor[2] = rand()%155 + 100;
+=======
+>>>>>>> origin/sim3
 
+            randColor[0] = 0;
+            randColor[1] = 255;
+            randColor[2] = 0;
             for(int i=0; i<templ[0].features.size(); i++){
                 auto feat = templ[0].features[i];
-                cv::circle(test_img, {feat.x+match.x, feat.y+match.y}, 2, randColor, -1);
+                float x = feat.x + match.x;
+                float y = feat.y + match.y;
+                float new_x = result.transformation_[0][0]*x + result.transformation_[0][1]*y + result.transformation_[0][2];
+                float new_y = result.transformation_[1][0]*x + result.transformation_[1][1]*y + result.transformation_[1][2];
+
+                cv::circle(edge, {int(new_x+0.5f), int(new_y+0.5f)}, 2, randColor, -1);
+            }
+            if(viewICP){
+                imshow("icp", edge);
+                waitKey(0);
             }
 
-            cv::putText(test_img, to_string(int(round(match.similarity))),
-                        Point(match.x+r-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
-            cv::rectangle(test_img, {match.x, match.y}, {x, y}, randColor, 2);
+            
+            double init_angle = infos[match.template_id].angle;
+            init_angle = init_angle >= 180 ? (init_angle-360) : init_angle;
 
-            std::cout << "\nmatch.template_id: " << match.template_id << std::endl;
+            double ori_diff_angle = std::abs(init_angle);
+            double icp_diff_angle = std::abs(-std::atan(result.transformation_[1][0]/result.transformation_[0][0])/CV_PI*180 +
+                    init_angle);
+            double improved_angle = ori_diff_angle - icp_diff_angle;
+
+            std::cout << "\n---------------" << std::endl;
+            std::cout << "scale: " << std::sqrt(result.transformation_[0][0]*result.transformation_[0][0] +
+                    result.transformation_[1][0]*result.transformation_[1][0]) << std::endl;
+            std::cout << "init diff angle: " << ori_diff_angle << std::endl;
+            std::cout << "improved angle: " << improved_angle << std::endl;
+            std::cout << "match.template_id: " << match.template_id << std::endl;
             std::cout << "match.similarity: " << match.similarity << std::endl;
         }
-
-        imshow("img", test_img);
-        waitKey(0);
 
         std::cout << "test end" << std::endl << std::endl;
     }
@@ -499,6 +580,7 @@ void view_angle(){
 int main(){
 
     MIPP_test();
+<<<<<<< HEAD
 
     // scale_test("train"); // test or train
     // scale_test("test"); // test or train
@@ -507,6 +589,8 @@ int main(){
     // noise_test("test"); // test or train
 
     angle_test("train"); // test or train
+=======
+>>>>>>> origin/sim3
     angle_test("test"); // test or train
     return 0;
 }
