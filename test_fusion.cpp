@@ -10,7 +10,7 @@ using namespace cv;
 
 #include "fusion.h"
 
-static std::string prefix = "/home/rfjiang/shape_based_matching/test/";
+static std::string prefix = "../test/";
 void gauss_test()
 {
     // only support gray img now
@@ -705,7 +705,7 @@ void sobel_mag_phase_quant_hist_spread_response_test()
     int padding = 500;
     cv::Mat padded_img = cv::Mat(test_img.rows + 2 * padding,
                                  test_img.cols + 2 * padding, test_img.type(), cv::Scalar::all(0));
-    test_img.copyTo(padded_img(Rect(padding, padding, test_img.cols, test_img.rows)));
+    test_img.copyTo(padded_img(cv::Rect(padding, padding, test_img.cols, test_img.rows)));
 
     int stride = 16;
     int n = padded_img.rows / stride;
@@ -720,19 +720,20 @@ void sobel_mag_phase_quant_hist_spread_response_test()
     Timer timer;
     double opencv_time = 0;
 
+// Sobel
     Mat img16;
     img.convertTo(img16, CV_16S);
 
     Mat sobel_dx, sobel_dy, sobel_ag;
-    Sobel(img16, sobel_dx, CV_16S, 1, 0, 3, 1.0, 0.0, BORDER_CONSTANT);
+    cv::Sobel(img16, sobel_dx, CV_16S, 1, 0, 3, 1.0, 0.0, BORDER_CONSTANT);
     opencv_time += timer.out("sobel_dx");
 
-    Sobel(img16, sobel_dy, CV_16S, 0, 1, 3, 1.0, 0.0, BORDER_CONSTANT);
+    cv::Sobel(img16, sobel_dy, CV_16S, 0, 1, 3, 1.0, 0.0, BORDER_CONSTANT);
     opencv_time += timer.out("sobel_dy");
 
     sobel_dx.convertTo(sobel_dx, CV_32S);
     sobel_dy.convertTo(sobel_dy, CV_32S);
-    Mat opencv_mag = sobel_dx.mul(sobel_dx)  + sobel_dy.mul(sobel_dy);
+    cv::Mat opencv_mag = sobel_dx.mul(sobel_dx)  + sobel_dy.mul(sobel_dy);
     opencv_time += timer.out("opencv_mag");
 
     Mat sobel_dx_f, sobel_dy_f;

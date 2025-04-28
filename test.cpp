@@ -6,7 +6,7 @@
 using namespace std;
 using namespace cv;
 
-static std::string prefix = "/home/meiqua/shape_based_matching/test/";
+static std::string prefix = "../test/";
 
 // NMS, got from cv::dnn so we don't need opencv contrib
 // just collapse it
@@ -206,19 +206,22 @@ void scale_test(string mode = "test"){
 }
 
 void angle_test(string mode = "test"){
-    line2Dup::Detector detector(128, {4, 8});
+    line2Dup::Detector detector(256, {2, 4, 8});
+    // min(width, height) / 32 is the max feature number
 
 //    mode = "test";
     if(mode == "train"){
-        Mat img = imread(prefix+"case1/train.png");
+        Mat img = imread(prefix+"case1/train_small.png");
         assert(!img.empty() && "check your img path");
 
-        Rect roi(130, 110, 270, 270);
+        Rect roi(0, 0, img.cols, img.rows);
+        std::cout << "img size: " << img.rows <<" " << img.cols << std::endl << std::endl;
+        // Rect roi(130, 110, 270, 270);
         img = img(roi).clone();
         Mat mask = Mat(img.size(), CV_8UC1, {255});
 
         // padding to avoid rotating out
-        int padding = 100;
+        int padding = 0;
         cv::Mat padded_img = cv::Mat(img.rows + 2*padding, img.cols + 2*padding, img.type(), cv::Scalar::all(0));
         img.copyTo(padded_img(Rect(padding, padding, img.cols, img.rows)));
 
@@ -226,7 +229,7 @@ void angle_test(string mode = "test"){
         mask.copyTo(padded_mask(Rect(padding, padding, img.cols, img.rows)));
 
         shape_based_matching::shapeInfo_producer shapes(padded_img, padded_mask);
-        shapes.angle_range = {0, 360};
+        shapes.angle_range = {-45, 45};
         shapes.angle_step = 1;
         shapes.produce_infos();
         std::vector<shape_based_matching::shapeInfo_producer::Info> infos_have_templ;
@@ -235,14 +238,16 @@ void angle_test(string mode = "test"){
             imshow("train", shapes.src_of(info));
             waitKey(1);
 
-            std::cout << "\ninfo.angle: " << info.angle << std::endl;
+            // std::cout << "\ninfo.angle: " << info.angle << std::endl;
             int templ_id = detector.addTemplate(shapes.src_of(info), class_id, shapes.mask_of(info));
-            std::cout << "templ_id: " << templ_id << std::endl;
+            // std::cout << "templ_id: " << templ_id << std::endl;
             if(templ_id != -1){
                 infos_have_templ.push_back(info);
             }
         }
         detector.writeClasses(prefix+"case1/%s_templ.yaml");
+        float center_row = padded_img.rows/2.0f;
+        float center_col = padded_img.cols/2.0f;
         shapes.save_infos(infos_have_templ, prefix + "case1/test_info.yaml");
         std::cout << "train end" << std::endl << std::endl;
     }else if(mode=="test"){
@@ -257,7 +262,7 @@ void angle_test(string mode = "test"){
         Mat test_img = imread(prefix+"case1/test.png");
         assert(!test_img.empty() && "check your img path");
 
-        int padding = 500;
+        int padding = 0;
         cv::Mat padded_img = cv::Mat(test_img.rows + 2*padding,
                                      test_img.cols + 2*padding, test_img.type(), cv::Scalar::all(0));
         test_img.copyTo(padded_img(Rect(padding, padding, test_img.cols, test_img.rows)));
@@ -291,16 +296,17 @@ void angle_test(string mode = "test"){
             // 100 is padding when training
             // tl_x/y: template croping topleft corner when training
 
-            float r_scaled = 270/2.0f*infos[match.template_id].scale;
+            float r_scaled = 304/2.0f*infos[match.template_id].scale;
 
             // scaling won't affect this, because it has been determined by warpAffine
             // cv::warpAffine(src, dst, rot_mat, src.size()); last param
-            float train_img_half_width = 270/2.0f + 100;
+            float train_img_half_width =  304/2.0f;
+            float train_img_half_hight =  289/2.0f;
 
             // center x,y of train_img in test img
             float x =  match.x - templ[0].tl_x + train_img_half_width;
-            float y =  match.y - templ[0].tl_y + train_img_half_width;
-
+            float y =  match.y - templ[0].tl_y + train_img_half_hight;
+            std::cout << "x: " << x-padding << " y: " << y-padding << std::endl;
             cv::Vec3b randColor;
             randColor[0] = rand()%155 + 100;
             randColor[1] = rand()%155 + 100;
@@ -493,6 +499,14 @@ void view_angle(){
 int main(){
 
     MIPP_test();
+
+    // scale_test("train"); // test or train
+    // scale_test("test"); // test or train
+
+    // noise_test("train"); // test or train
+    // noise_test("test"); // test or train
+
+    angle_test("train"); // test or train
     angle_test("test"); // test or train
     return 0;
 }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.20)
 set (CMAKE_CXX_STANDARD 14)
 project(shape_based_matching)
 
@@ -6,7 +6,9 @@ project(shape_based_matching)
 # debug or release
 SET(CMAKE_BUILD_TYPE "Release")
 
-
+set(Eigen3_DIR "E:/ENVs/eigen-3.4.0/install_/share/eigen3/cmake")
+set(OpenCV_DIR "E:/ENVs/OpenCV-3.4.16/x64/vc15/lib")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/release")
 # arm or x86
 IF(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
     SET(PLATFORM_COMPILE_FLAGS "-mfpu=neon")
